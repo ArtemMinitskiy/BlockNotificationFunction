@@ -55,14 +55,12 @@
         tools:ignore="AllowBackup,GoogleAppIndexingWarning"
         tools:targetApi="m">
         <activity
-            android:name=".MainActivity2"
-            android:exported="true" >
+            android:name=".NotificationDetailActivity"
+            android:exported="false" />
 
-        </activity>
         <activity
             android:name=".MainActivity"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -79,6 +77,22 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".NotificationSaveService"
+            android:enabled="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:stopWithTask="false" />
+        <receiver
+            android:name=".NotificationSaveReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="servicereload" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

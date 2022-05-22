@@ -1,187 +1,96 @@
 package com.cleaner.blocknotificationfunction
 
-import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.Notification
-import android.content.*
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Message
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.text.TextUtils
-import android.util.Log
-import android.widget.Toast
-import androidx.annotation.RequiresApi
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationCompat.EXTRA_SMALL_ICON
+import androidx.core.content.ContextCompat
 
-class BlockNotificationService: NotificationListenerService() {
-
-    var mRemovedNotification: StatusBarNotification? = null
-
-
-
-    // String a;
-    @SuppressLint("HandlerLeak")
-    private val mMonitorHandler: Handler = object : Handler() {
-        override fun handleMessage(msg: Message) {
-            when (msg.what) {
-                EVENT_UPDATE_CURRENT_NOS -> updateCurrentNotifications()
-                else -> {
-                }
-            }
-        }
-    }
-
-    private val brNotificationsManager = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val action: String?
-            if (intent.action != null) {
-                action = intent.action
-                if (action == ACTION_NLS_CONTROL) {
-                    val command = intent.getStringExtra("command")
-                    if (TextUtils.equals(command, "cancel_last")) {
-                        if (mCurrentNotificationsCounts >= 1) {
-                            val statusBarNotification: StatusBarNotification = getCurrentNotifications()!![mCurrentNotificationsCounts - 1]
-                            cancelNotification(statusBarNotification.packageName, statusBarNotification.tag, statusBarNotification.id)
-                        }
-                    } else if (TextUtils.equals(command, "cancel_all")) {
-                        cancelAllNotifications()
-                    }
-                }
-            }
-        }
-    }
+class BlockNotificationService : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        logNLS("onCreate...")
-        val filter = IntentFilter()
-        filter.addAction(ACTION_NLS_CONTROL)
-        registerReceiver(brNotificationsManager, filter)
-        mMonitorHandler.sendMessage(mMonitorHandler.obtainMessage(EVENT_UPDATE_CURRENT_NOS))
+        toggleNotificationListenerService()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(brNotificationsManager)
+        toggleNotificationListenerService()
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        // a.equals("b");
-        logNLS("onBind...")
         return super.onBind(intent)
     }
 
     companion object {
-
-        private val EVENT_UPDATE_CURRENT_NOS = 0
-        var ACTION_NLS_CONTROL = "com.cleaner.blocknotificationfunction.NLSCONTROL"
-        var mCurrentNotificationsCounts = 0
-        var mCurrentNotifications: MutableList<Array<StatusBarNotification>?> = ArrayList()
-        var mPostedNotification: StatusBarNotification? = null
-        fun getCurrentNotifications(): Array<StatusBarNotification>? {
-            if (mCurrentNotifications.size == 0) {
-                logNLS("mCurrentNotifications size is ZERO!!")
-                return null
-            }
-            return mCurrentNotifications[0]
-        }
-        private val TAG = "BlockNotification"
-        private val TAG_PRE = "[" + BlockNotificationService::class.java.getSimpleName() + "] "
-        private fun logNLS(`object`: Any) {
-            Log.i(TAG, TAG_PRE + `object`)
-        }
-
         fun isAppNotificationsEnabled(context: Context, packageName: String) = context.getSharedPreferences("com.cleaner.cleanerpro", MODE_PRIVATE).getBoolean(packageName, false)
         fun setAppNotificationsEnabled(context: Context, packageName: String, isAppNotificationsEnabled: Boolean) = context.getSharedPreferences("com.cleaner.cleanerpro", MODE_PRIVATE).edit().putBoolean(packageName, isAppNotificationsEnabled).apply()
+        fun saveNotificationsCount(context: Context, count: Int) = context.getSharedPreferences("com.cleaner.cleanerpro", MODE_PRIVATE).edit().putInt(Constants.NOTIFICATION, count).apply()
 
-        var notificationTitle = ""
         var countLockedNotification = 0
     }
 
+    private var notificationTitle = ""
+    private var notificationText = ""
+    private var notificationPackageName = ""
+    private var isServiceStart = false
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (isAppNotificationsEnabled(this, sbn!!.packageName)) {
-            countLockedNotification++
+            saveNotificationsCount(this, countLockedNotification++)
+            notificationTitle = sbn.notification.extras.getString(Notification.EXTRA_TITLE).toString()
+            notificationText = sbn.notification.extras.getString(Notification.EXTRA_TEXT).toString()
+            notificationPackageName = sbn.packageName
+            NotificationRepository.insertData(this, notificationTitle, notificationText, notificationPackageName, false)
+            if (!isServiceStart) {
+                startService()
+            }
+
             try {
                 cancelNotification(sbn.key)
-            } catch (ignored: SecurityException) {}
-        }
-
-        updateCurrentNotifications()
-        logNLS("onNotificationPosted...")
-//        Toast.makeText(this, "onNotificationPosted ${sbn.packageName} ", Toast.LENGTH_LONG).show()
-        Toast.makeText(this, "onNotificationPosted $countLockedNotification ", Toast.LENGTH_LONG).show()
-//        Toast.makeText(this, "onNotificationPosted ${sbn.notification.extras.getString(Notification.EXTRA_TITLE)} "  +
-//                "\n" +
-//                "${sbn.notification.extras.getString(Notification.EXTRA_TEXT)}", Toast.LENGTH_LONG).show()
-        logNLS("have $mCurrentNotificationsCounts active notifications")
-        mPostedNotification = sbn
-        notificationTitle = sbn!!.notification.extras.getString(Notification.EXTRA_TITLE).toString()
-        logNLS("${sbn!!.notification.extras.getString(EXTRA_SMALL_ICON)}")
-
-        /*
-         * Bundle extras = sbn.getNotification().extras; String
-         * notificationTitle = extras.getString(Notification.EXTRA_TITLE);
-         * Bitmap notificationLargeIcon = ((Bitmap)
-         * extras.getParcelable(Notification.EXTRA_LARGE_ICON)); Bitmap
-         * notificationSmallIcon = ((Bitmap)
-         * extras.getParcelable(Notification.EXTRA_SMALL_ICON)); CharSequence
-         * notificationText = extras.getCharSequence(Notification.EXTRA_TEXT);
-         * CharSequence notificationSubText =
-         * extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
-         * Log.i("BlockNotification", "notificationTitle:"+notificationTitle);
-         * Log.i("BlockNotification", "notificationText:"+notificationText);
-         * Log.i("BlockNotification", "notificationSubText:"+notificationSubText);
-         * Log.i("BlockNotification",
-         * "notificationLargeIcon is null:"+(notificationLargeIcon == null));
-         * Log.i("BlockNotification",
-         * "notificationSmallIcon is null:"+(notificationSmallIcon == null));
-         */
-    }
-
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        updateCurrentNotifications()
-        logNLS("removed...")
-        logNLS("have $mCurrentNotificationsCounts active notifications")
-        mRemovedNotification = sbn
-    }
-
-    private fun updateCurrentNotifications() {
-        try {
-            val activeNos = activeNotifications
-            if (mCurrentNotifications.size == 0) {
-                mCurrentNotifications.add(null)
+            } catch (ignored: SecurityException) {
             }
-            mCurrentNotifications[0] = activeNos
-            mCurrentNotificationsCounts = activeNos.size
-        } catch (e: Exception) {
-            logNLS("Should not be here!!")
-            e.printStackTrace()
+        }
+//        Toast.makeText(this, "onNotificationPosted $countLockedNotification ", Toast.LENGTH_LONG).show()
+    }
+
+    private fun toggleNotificationListenerService() {
+        val pm = packageManager
+        pm.setComponentEnabledSetting(ComponentName(this, BlockNotificationService::class.java), PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(ComponentName(this, BlockNotificationService::class.java), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+    }
+
+    private fun startService() {
+        isServiceStart = true
+        val serviceIntent = Intent(this, NotificationSaveService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!isMyServiceRunning(NotificationSaveService::class.java)) {
+                ContextCompat.startForegroundService(this, serviceIntent)
+            }
+        } else {
+            if (!isMyServiceRunning(NotificationSaveService::class.java)) {
+                startService(Intent(this, NotificationSaveService::class.java))
+            }
         }
     }
 
-
-
-
-
-
-
-
-
-/*    override fun onBind(intent: Intent?): IBinder? {
-        return super.onBind(intent)
+    private fun isMyServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        Log.i("BlockNotification", "Notification Removed")
+
     }
-
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
-        super.onNotificationPosted(sbn)
-        Log.i("BlockNotification", "Notification arrived")
-
-    }*/
 
 }
