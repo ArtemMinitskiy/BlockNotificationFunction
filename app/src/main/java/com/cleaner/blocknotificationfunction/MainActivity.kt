@@ -2,38 +2,33 @@ package com.cleaner.blocknotificationfunction
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.ActivityManager
-import android.content.ComponentName
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.text.method.ScrollingMovementMethod
 import android.util.Log
-import android.widget.TextView
+import android.widget.RemoteViews
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cleaner.blocknotificationfunction.databinding.ActivityMainBinding
+
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var appsList: ArrayList<AppInfo>
-    private lateinit var notificationList: ArrayList<NotificationTableModel>
-
-    lateinit var notificationViewModel: NotificationViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        notificationViewModel = ViewModelProvider(this).get(NotificationViewModel::class.java)
-
-        notificationList = ArrayList()
         appsList = ArrayList()
         appsList = getAppsListInfo(this)
 
@@ -62,16 +57,67 @@ class MainActivity : AppCompatActivity() {
                 }
                 adapter.notifyDataSetChanged()
             }
-
+            var count = 0
+            var list : ArrayList<String> = ArrayList()
             hideNotificationBtn.setOnClickListener {
                 saveAppEnabledNotificationStatus(appsList)
+
             }
 
+
             textView.setOnClickListener {
-                startActivity(Intent(this@MainActivity, NotificationDetailActivity::class.java))
+                count++
+                list.add(count.toString())
+                sendNotification(count, "Telegram", list)
+
             }
 
         }
+        val notificationManagerCompat = NotificationManagerCompat.from(this)
+        notificationManagerCompat.cancelAll()
+        BlockNotificationService.countLockedNotification = 0
+        BlockNotificationService.list.clear()
+    }
+
+    private val CHANNEL_ID = "PRO_CLEANER"
+    private fun sendNotification(count: Int, bigContent: String, list: ArrayList<String>) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationName = resources.getString(R.string.app_name)
+            val notificationImportance = NotificationManager.IMPORTANCE_DEFAULT
+            val notificationChannel = NotificationChannel(CHANNEL_ID, notificationName, notificationImportance)
+            val notificationManager: NotificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(notificationChannel)
+        }
+//        val icon = BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_background)
+
+        val intent = Intent(this, MainActivity::class.java)
+        val remoteViews = RemoteViews(packageName, R.layout.notification_save_badge)
+        remoteViews.setTextViewText(R.id.count, BlockNotificationService.countLockedNotification.toString())
+        val pendingIntent = PendingIntent.getActivity(this, 30, intent, 0)
+        remoteViews.setOnClickPendingIntent(R.id.count, pendingIntent)
+
+        val notification = NotificationCompat.Builder(this@MainActivity, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_background)
+//            .setLargeIcon(icon)
+            .setContentTitle("Saved notification")
+            .setContentIntent(pendingIntent)
+//            .setContentText("setNotificationBody(context, CHANNEL_ID)")
+//            .setGroup("group")
+//            .setContent(remoteViews)
+//            .setGroup(CHANNEL_ID)
+            .setAutoCancel(false)
+        val inboxStyle = NotificationCompat.InboxStyle()
+        inboxStyle.setBigContentTitle(bigContent)
+        list.forEach {
+            inboxStyle.addLine("$bigContent:  $it")
+
+        }
+//        inboxStyle.addLine("Messgare $count")
+
+        notification.setStyle(inboxStyle);
+
+        val mangerCompat = NotificationManagerCompat.from(this@MainActivity)
+        mangerCompat.notify(1, notification.build())
     }
 
     private fun saveAppEnabledNotificationStatus(appsList: ArrayList<AppInfo>) {
@@ -118,7 +164,7 @@ class MainActivity : AppCompatActivity() {
         return appForReturnedList
     }
 
-    fun getAppsListInfo(activity: Activity): ArrayList<AppInfo> {
+    private fun getAppsListInfo(activity: Activity): ArrayList<AppInfo> {
         val appsArrayList: ArrayList<AppInfo> = ArrayList()
 
         for (app in getListOfAppsInfo(this)) {
@@ -128,8 +174,8 @@ class MainActivity : AppCompatActivity() {
         return appsArrayList
     }
 
-    fun isEnabled(context: Context): Boolean = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
-    fun requestPermission(context: Context) {
+    private fun isEnabled(context: Context): Boolean = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+    private fun requestPermission(context: Context) {
         context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
     }
 
